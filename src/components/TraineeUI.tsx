@@ -53,7 +53,7 @@ export default function TraineeUI() {
       <div className="flex-1 bg-[#1a1a1a] relative flex flex-col">
         {/* Top toolbar inside map area */}
         <div className="absolute top-4 left-4 z-10 flex gap-2">
-           <div className="bg-gis-panel/90 backdrop-blur border border-gis-border px-3 py-1.5 rounded text-gis-accent text-[12px]">
+           <div className="bg-gis-panel/90 backdrop-blur border border-gis-border px-3 py-1.5 rounded-2xl text-gis-accent text-[12px]">
              3D / 2D SIMULATION
            </div>
         </div>
@@ -85,7 +85,7 @@ export default function TraineeUI() {
         })}
         
         {/* Scale indicator bottom right */}
-        <div className="absolute bottom-4 right-4 text-gis-accent text-[11px] font-mono bg-gis-bg/80 px-2 py-1 rounded">
+        <div className="absolute bottom-4 right-4 text-gis-accent text-[11px] font-mono bg-gis-bg/80 px-2 py-1 rounded-2xl">
            SCALE: 1:500 | {currentTime}
         </div>
       </div>
@@ -109,8 +109,8 @@ export default function TraineeUI() {
               <PropRow label="Size Band" value={detections[0].size_band} />
               
               <div className="mt-8 pt-4 border-t border-gis-border space-y-2">
-                 <button className="w-full py-2 bg-gis-active text-white rounded hover:bg-opacity-90">Engage Track</button>
-                 <button className="w-full py-2 bg-gis-bg border border-gis-border text-gis-text rounded hover:bg-[#333]">Mark as Friendly</button>
+                 <button className="w-full py-2 bg-gis-active text-white rounded-2xl hover:bg-opacity-90">Engage Track</button>
+                 <button className="w-full py-2 bg-gis-bg border border-gis-border text-gis-text rounded-2xl hover:bg-[#333]">Mark as Friendly</button>
               </div>
             </div>
           ) : (
