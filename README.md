@@ -1,32 +1,38 @@
-# React + TypeScript + Vite
+# Trinetra: AI-Enabled Drone Threat Simulation Trainer
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+<div align="center">
+  <h3><strong>Made by Team Star Busters</strong></h3>
+  <p><em>Built for the Ministry of Defence SIH26247 Mandate</em></p>
+</div>
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 📌 Overview
+**Trinetra** is a highly professional, multimodal digital twin and simulation dashboard designed for robust UAV perception training under uncertain environments. It provides a state-of-the-art GIS Command Center interface that allows instructors to construct complex threat scenarios and allows trainees to practice engagements using live AI sensor fusion data.
 
-## React Compiler
+## 🚀 Key Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+*   **Trainee Dashboard**: A 3-panel professional GIS interface showing live RGB, Thermal, and Radar streams. Features real-time track inspection, sensor health diagnostics, and engagement actions.
+*   **Instructor Console**: Complete scenario builder to manipulate weather (haze, fog), time of day, target density (swarms vs single), and sensor degradation.
+*   **Analytics & AAR (After-Action Review)**: Advanced counterfactual replay engine. Evaluates trainee decisions (e.g., false positive engagements) against the optimal AI branch to provide causally-backed performance metrics.
 
-## Expanding the Oxlint configuration
+## 🛠️ Tech Stack
+*   **Frontend**: React, TypeScript, Tailwind CSS
+*   **Design Language**: Custom Dark GIS/IDE Theme (SaaS curves with strict tactical contrast)
+*   **Data Pipeline**: Live WebSocket ingestion for YOLO/RT-DETR inference telemetry.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## 🏃‍♂️ How to Run Locally
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+4. Access the command center at `http://localhost:5173`
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+---
+*Developed with ❤️ by Team Star Busters for Smart India Hackathon.*
