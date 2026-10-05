@@ -4,7 +4,7 @@ import InstructorUI from './components/InstructorUI';
 import AARUI from './components/AARUI';
 import HomeUI from './components/HomeUI';
 
-type ViewState = 'home' | 'trainee' | 'instructor' | 'aar';
+type ViewState = 'home' | 'trainee' | 'instructor' | 'aar' | 'monitoring';
 
 function App() {
   const [view, setView] = useState<ViewState>('home');
@@ -30,6 +30,7 @@ function App() {
           <div className="flex gap-1 ml-4 border-l border-[#333] pl-6">
             <NavButton active={view === 'trainee'} onClick={() => setView('trainee')}>Trainee Dashboard</NavButton>
             <NavButton active={view === 'instructor'} onClick={() => setView('instructor')}>Instructor Setup</NavButton>
+            <NavButton active={view === 'monitoring'} onClick={() => setView('monitoring')}>Live Monitoring</NavButton>
             <NavButton active={view === 'aar'} onClick={() => setView('aar')}>Analytics & AAR</NavButton>
           </div>
         </div>
@@ -47,6 +48,7 @@ function App() {
         {view === 'home' && <HomeUI setView={setView} />}
         {view === 'trainee' && <TraineeUI />}
         {view === 'instructor' && <InstructorUI />}
+        {view === 'monitoring' && <div className="p-[48px] text-center text-gis-muted text-[18px]">Live Monitoring View Pending Setup...</div>}
         {view === 'aar' && <AARUI />}
       </main>
     </div>
