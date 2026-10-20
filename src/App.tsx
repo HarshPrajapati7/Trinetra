@@ -48,7 +48,7 @@ function App() {
         {view === 'home' && <HomeUI setView={setView} />}
         {view === 'trainee' && <TraineeUI />}
         {view === 'instructor' && <InstructorUI />}
-        {view === 'monitoring' && <div className="p-[48px] text-center text-gis-muted text-[18px]">Live Monitoring View Pending Setup...</div>}
+        {view === 'monitoring' && <TraineeUI />}
         {view === 'aar' && <AARUI />}
       </main>
     </div>

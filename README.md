@@ -19,20 +19,43 @@
 ## 🛠️ Tech Stack
 *   **Frontend**: React, TypeScript, Tailwind CSS
 *   **Design Language**: Custom Dark GIS/IDE Theme (SaaS curves with strict tactical contrast)
-*   **Data Pipeline**: Live WebSocket ingestion for YOLO/RT-DETR inference telemetry.
+*   **Data Pipeline**: Live RGB webcam inference and RGB/IR YOLO11 inference using ONNX Runtime.
 
 ## 🏃‍♂️ How to Run Locally
 
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-4. Access the command center at `http://localhost:5173`
+From the repository root, install the backend and frontend dependencies:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+npm ci
+```
+
+Start the backend and frontend in separate PowerShell terminals. In each terminal, change to the repository root first.
+
+Backend:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python server.py
+```
+
+Frontend:
+
+```powershell
+npm run dev
+```
+
+Access the command center at `http://localhost:5173`. The backend listens on `http://localhost:8080`.
+Run only one backend process at a time. If port 8080 is already in use, stop the existing server with `Ctrl+C` in its terminal before starting another; the existing server process ID can also be found with `Get-NetTCPConnection -State Listen -LocalPort 8080`.
+
+The backend loads the RGB and IR YOLO11 ONNX exports corresponding to `models/RGB y11 model.pt` and `models/IR model.pt`. The trainee screen runs exactly one selected model at a time on the current webcam feed, and uses the same selected model for uploaded-image detection. The camera reader continuously retains only its newest frame so inference cannot queue old video; the live preview and detector run independently. A separate thermal camera is not connected, and radar is unavailable because no radar model is provided. To select a live WebSocket mode directly, connect to `/ws?modality=rgb` or `/ws?modality=ir`. To call the image endpoint, send `modality=rgb` or `modality=ir` with the image to `/api/detect` (RGB is the default):
+
+```powershell
+curl.exe -X POST http://localhost:8080/api/detect -F "modality=ir" -F "file=@image.jpg"
+```
+
+The AAR screen reads the recorded run metrics and GPS detections from `models/prod_summary.json` and `models/prod_gps_track_log.csv`. Its replay video, evaluation plots, trajectory image, and analysis notebook are served from the same `models/` folder.
 
 ---
 *Developed with ❤️ by Team Star Busters for Smart India Hackathon.*
