@@ -1,79 +1,194 @@
+import { useEffect, useState } from 'react';
+
+const API_URL = 'http://localhost:8080';
+
+type Scenario = {
+  environment: string;
+  weather: string;
+  timeOfDay: string;
+  targetDensity: string;
+};
+
+type ModelStatus = {
+  status: string;
+};
+
+type BackendStatus = {
+  rgb_model: ModelStatus;
+  ir_model: ModelStatus;
+  radar_model: ModelStatus;
+};
+
+const DEFAULT_SCENARIO: Scenario = {
+  environment: 'Urban Center (High Clutter)',
+  weather: 'Clear',
+  timeOfDay: 'Daylight',
+  targetDensity: 'Single Target',
+};
+
 export default function InstructorUI() {
+  const [scenario, setScenario] = useState(DEFAULT_SCENARIO);
+  const [modelStatus, setModelStatus] = useState<BackendStatus | null>(null);
+  const [statusError, setStatusError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_URL}/api/status`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error(`Model status request failed (${response.status})`);
+        return response.json() as Promise<BackendStatus>;
+      })
+      .then(setModelStatus)
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setStatusError(error instanceof Error ? error.message : 'Could not load model status.');
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  const updateScenario = (key: keyof Scenario, value: string) => {
+    setScenario(current => ({ ...current, [key]: value }));
+  };
+
+  const exportScenario = () => {
+    const file = new Blob([JSON.stringify(scenario, null, 2)], { type: 'application/json' });
+    const downloadUrl = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = 'trinetra-scenario.json';
+    link.click();
+    URL.revokeObjectURL(downloadUrl);
+  };
+
   return (
-    <div className="h-full w-full p-8 bg-gis-bg overflow-y-auto text-[13px]">
-      <div className="max-w-[1000px] mx-auto space-y-6">
-        <header className="mb-8">
+    <div className="h-full w-full overflow-y-auto bg-gis-bg p-6 text-[13px] md:p-8">
+      <div className="mx-auto max-w-[1100px] space-y-6">
+        <header>
           <h1 className="text-[24px] font-medium text-gis-accent">Instructor Setup</h1>
-          <p className="text-gis-muted mt-1">Configure environment and parameters for the digital twin simulation.</p>
+          <p className="mt-1 text-gis-muted">
+            Configure and export scenario metadata. These settings do not modify detector inputs.
+          </p>
         </header>
 
-        <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-8 bg-gis-panel border border-gis-border rounded-2xl p-6 space-y-6">
-            <h2 className="text-[16px] font-medium text-gis-accent border-b border-gis-border pb-3">Scenario Builder</h2>
-            
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <ControlSelect label="Environment Model" options={['Urban Center (High Clutter)', 'Industrial Complex', 'Open Desert']} />
-              <ControlSelect label="Weather Engine" options={['Clear', 'Haze (Visual Degradation)', 'Heavy Fog (Thermal/Radar Only)']} />
-              <ControlSelect label="Time of Day" options={['Daylight', 'Dusk', 'Night (IR Focus)']} />
-              <ControlSelect label="Target Density" options={['Single Target', 'Small Swarm (3-5)', 'Large Swarm (10+)']} />
-            </div>
-
-            <div className="pt-6 border-t border-gis-border">
-              <h3 className="text-gis-accent mb-4">Sensor Node Status (Overrides)</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <SensorCard label="RGB Camera" status="Nominal" />
-                <SensorCard label="Thermal/LWIR" status="Degraded Noise" />
-                <SensorCard label="Radar FMCW" status="Spoofed Returns" />
+        <div className="grid gap-6 lg:grid-cols-12">
+          <section className="space-y-6 rounded-2xl border border-gis-border bg-gis-panel p-6 lg:col-span-8">
+            <div>
+              <h2 className="border-b border-gis-border pb-3 text-[16px] font-medium text-gis-accent">
+                Scenario Builder
+              </h2>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <ControlSelect
+                  label="Environment Model"
+                  value={scenario.environment}
+                  options={['Urban Center (High Clutter)', 'Industrial Complex', 'Open Desert']}
+                  onChange={value => updateScenario('environment', value)}
+                />
+                <ControlSelect
+                  label="Weather"
+                  value={scenario.weather}
+                  options={['Clear', 'Haze', 'Heavy Fog']}
+                  onChange={value => updateScenario('weather', value)}
+                />
+                <ControlSelect
+                  label="Time of Day"
+                  value={scenario.timeOfDay}
+                  options={['Daylight', 'Dusk', 'Night']}
+                  onChange={value => updateScenario('timeOfDay', value)}
+                />
+                <ControlSelect
+                  label="Target Density"
+                  value={scenario.targetDensity}
+                  options={['Single Target', 'Small Swarm (3-5)', 'Large Swarm (10+)']}
+                  onChange={value => updateScenario('targetDensity', value)}
+                />
               </div>
             </div>
 
-            <div className="pt-4 flex justify-end gap-3">
-               <button className="px-4 py-2 bg-gis-bg border border-gis-border text-gis-text rounded-2xl hover:bg-gis-panel-light">Reset Defaults</button>
-               <button className="px-6 py-2 bg-gis-active text-white rounded-2xl font-medium hover:bg-opacity-90">Deploy Scenario</button>
+            <div className="border-t border-gis-border pt-5">
+              <h3 className="mb-3 text-gis-accent">Loaded model status</h3>
+              {statusError && <p role="alert" className="mb-3 text-[#ff8888]">{statusError}</p>}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <SensorCard label="RGB YOLO11" status={modelStatus?.rgb_model.status ?? 'CONNECTING'} />
+                <SensorCard label="IR YOLO11" status={modelStatus?.ir_model.status ?? 'CONNECTING'} />
+                <SensorCard label="Radar" status={modelStatus?.radar_model.status ?? 'CONNECTING'} />
+              </div>
             </div>
-          </div>
 
-          <div className="col-span-4 space-y-6">
-            <div className="bg-gis-panel border border-gis-border rounded-2xl p-6 h-48 flex flex-col">
-              <h2 className="text-gis-accent mb-3">Live Map Preview</h2>
-              <div className="flex-1 bg-[#1a1a1a] rounded-2xl border border-[#333] flex items-center justify-center">
-                <span className="text-gis-muted">Map not loaded</span>
-              </div>
+            <div className="flex flex-wrap justify-end gap-3 border-t border-gis-border pt-5">
+              <button
+                onClick={() => setScenario(DEFAULT_SCENARIO)}
+                className="rounded-xl border border-gis-border bg-gis-bg px-4 py-2 text-gis-text hover:bg-gis-panel-light"
+              >
+                Reset Defaults
+              </button>
+              <button
+                onClick={exportScenario}
+                className="rounded-xl bg-gis-active px-5 py-2 font-medium text-white hover:bg-opacity-90"
+              >
+                Export Scenario JSON
+              </button>
             </div>
-            
-            <div className="bg-gis-panel border border-gis-border rounded-2xl p-6">
-              <h2 className="text-gis-accent mb-3">Script Execution Log</h2>
-              <div className="text-gis-muted font-mono space-y-1 h-32 overflow-y-auto bg-[#1a1a1a] p-3 rounded-full text-[11px] border border-[#333]">
-                <div>&gt; System Init...</div>
-                <div>&gt; Loading terrain_urban_01.usd</div>
-                <div>&gt; Weather set to HAZE_LVL2</div>
-                <div>&gt; Awaiting deployment command...</div>
+          </section>
+
+          <aside className="space-y-6 lg:col-span-4">
+            <section className="rounded-2xl border border-gis-border bg-gis-panel p-5">
+              <h2 className="text-gis-accent">Recorded GPS trajectory</h2>
+              <img
+                src={`${API_URL}/api/assets/${encodeURIComponent('TracK GPS Trejectory.jpeg')}`}
+                alt="Recorded GPS track trajectory"
+                className="mt-3 aspect-[4/3] w-full rounded-xl border border-gis-border bg-[#111] object-contain"
+              />
+              <p className="mt-2 text-[11px] text-gis-muted">
+                Preview from the recorded production run, not a live map.
+              </p>
+            </section>
+            <section className="rounded-2xl border border-gis-border bg-gis-panel p-5">
+              <h2 className="text-gis-accent">Scenario notes</h2>
+              <div className="mt-3 space-y-2 rounded-xl border border-gis-border bg-[#1a1a1a] p-4 text-[11px] text-gis-muted">
+                <p>Selections are saved locally as a JSON file.</p>
+                <p>RGB and IR models are available for live webcam and uploaded-image inference.</p>
+                <p>Environmental simulation and radar inference are not connected.</p>
               </div>
-            </div>
-          </div>
+            </section>
+          </aside>
         </div>
       </div>
     </div>
   );
 }
 
-function ControlSelect({ label, options }: { label: string, options: string[] }) {
+function ControlSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
   return (
-    <div className="space-y-1.5">
-      <label className="text-gis-muted">{label}</label>
-      <select className="w-full bg-[#1a1a1a] border border-[#333] text-gis-text rounded-2xl p-2 focus:outline-none focus:border-gis-active">
-        {options.map(opt => <option key={opt}>{opt}</option>)}
+    <label className="space-y-1.5">
+      <span className="block text-gis-muted">{label}</span>
+      <select
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        className="w-full rounded-xl border border-[#333] bg-[#1a1a1a] p-2 text-gis-text focus:border-gis-active focus:outline-none"
+      >
+        {options.map(option => <option key={option}>{option}</option>)}
       </select>
-    </div>
+    </label>
   );
 }
 
-function SensorCard({ label, status }: { label: string, status: string }) {
-  const isBad = status !== 'Nominal';
+function SensorCard({ label, status }: { label: string; status: string }) {
+  const isReady = status === 'LOADED';
   return (
-    <div className="p-3 bg-[#1a1a1a] border border-[#333] rounded-2xl flex flex-col gap-1 cursor-pointer hover:border-gis-active">
+    <div className="flex min-w-0 flex-col gap-1 rounded-xl border border-gis-border bg-[#1a1a1a] p-3">
       <span className="text-gis-muted">{label}</span>
-      <span className={isBad ? 'text-[#ffaa00]' : 'text-[#00ff66]'}>{status}</span>
+      <span className={isReady ? 'text-[#00ff66]' : 'text-[#ffaa00]'}>{status}</span>
     </div>
   );
 }

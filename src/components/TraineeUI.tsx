@@ -1,27 +1,163 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+
+type Modality = 'rgb' | 'ir';
+type Detection = {
+  id: string;
+  class: string;
+  confidence: number;
+  bbox: [number, number, number, number];
+  size_band: string;
+  sensors: string[];
+};
 
 export default function TraineeUI() {
-  const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
+  const [currentTime, setCurrentTime] = useState(() => new Date().toLocaleTimeString());
   const [frame, setFrame] = useState<string | null>(null);
+  const [uploadedFrame, setUploadedFrame] = useState<string | null>(null);
   const [frameSize, setFrameSize] = useState<[number, number]>([640, 480]);
-  const [detections, setDetections] = useState<any[]>([]);
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const [rgbModelStatus, setRgbModelStatus] = useState('CONNECTING');
+  const [irModelStatus, setIrModelStatus] = useState('CONNECTING');
+  const [activeModelStatus, setActiveModelStatus] = useState('CONNECTING');
+  const [connectionStatus, setConnectionStatus] = useState('CONNECTING');
+  const [cameraStatus, setCameraStatus] = useState('WAITING');
+  const [inferenceMs, setInferenceMs] = useState<number | null>(null);
+  const [modality, setModality] = useState<Modality>('rgb');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [modeWarning, setModeWarning] = useState('');
+  const uploadedFrameUrl = useRef<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
-    const ws = new WebSocket("ws://localhost:8080/ws");
-    
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.frame) setFrame(data.frame);
-        if (data.frame_size) setFrameSize(data.frame_size);
-        if (data.detections) setDetections(data.detections);
-      } catch (e) {
-        console.error("Error parsing websocket data", e);
-      }
+    let mounted = true;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | undefined;
+
+    const connect = () => {
+      setConnectionStatus('CONNECTING');
+      setActiveModelStatus('CONNECTING');
+      socket = new WebSocket(`ws://localhost:8080/ws?modality=${modality}`);
+      socket.onopen = () => setConnectionStatus('CONNECTED');
+      socket.onmessage = event => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'frame' && data.frame && !uploadedFrameUrl.current) {
+            setFrame(data.frame);
+            if (data.frame_size) setFrameSize(data.frame_size);
+          }
+          const modeMatches = data.modality === modality;
+          if (!modeMatches) {
+            setActiveModelStatus('BACKEND OUTDATED');
+            setModeWarning(
+              `The backend is still using the old RGB-only stream. Stop it and restart with ".\\.venv\\Scripts\\python.exe server.py" from the Trinetra project folder to enable live ${modality.toUpperCase()} detection.`,
+            );
+            setDetections([]);
+            setInferenceMs(null);
+          } else {
+            if (data.model_status) {
+              setActiveModelStatus(data.model_status);
+              setModeWarning('');
+            }
+            if (data.type === 'detections' && Array.isArray(data.detections) && !uploadedFrameUrl.current) {
+              setDetections(data.detections);
+            }
+            if (data.type === 'detections' && typeof data.inference_ms === 'number') {
+              setInferenceMs(data.inference_ms);
+            }
+          }
+          if (data.sensor_status?.rgb?.status) {
+            setRgbModelStatus(
+              data.sensor_status.rgb.model_loaded ? 'LOADED' : data.sensor_status.rgb.status,
+            );
+          }
+          const irStatus = data.sensor_status?.ir ?? data.sensor_status?.thermal;
+          if (irStatus?.status) {
+            setIrModelStatus(irStatus.model_loaded ? 'LOADED' : irStatus.status);
+          }
+          if (data.has_webcam) {
+            setCameraStatus('ACTIVE');
+          } else if (data.has_webcam === false) {
+            setCameraStatus('NO CAMERA');
+            setFrame(null);
+          }
+        } catch (error) {
+          console.error('Error parsing websocket data', error);
+        }
+      };
+      socket.onclose = () => {
+        setConnectionStatus('RECONNECTING');
+        if (mounted) reconnectTimer = window.setTimeout(connect, 1500);
+      };
+      socket.onerror = () => socket?.close();
     };
-    return () => { clearInterval(timer); ws.close(); };
+    connect();
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [modality]);
+
+  useEffect(() => () => {
+    if (uploadedFrameUrl.current) URL.revokeObjectURL(uploadedFrameUrl.current);
   }, []);
+
+  const selectModality = (value: Modality) => {
+    if (uploadedFrameUrl.current) URL.revokeObjectURL(uploadedFrameUrl.current);
+    uploadedFrameUrl.current = null;
+    setUploadedFrame(null);
+    setSelectedFile(null);
+    setDetections([]);
+    setInferenceMs(null);
+    setModeWarning('');
+    setModality(value);
+  };
+
+  const detectImage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedFile) return;
+    setIsDetecting(true);
+    setUploadError('');
+    const body = new FormData();
+    body.append('file', selectedFile);
+    body.append('modality', modality);
+
+    try {
+      const response = await fetch('http://localhost:8080/api/detect', {
+        method: 'POST',
+        body,
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.detail || result.error || `Detection failed (${response.status})`);
+      }
+      if (uploadedFrameUrl.current) URL.revokeObjectURL(uploadedFrameUrl.current);
+      uploadedFrameUrl.current = URL.createObjectURL(selectedFile);
+      setUploadedFrame(uploadedFrameUrl.current);
+      setFrameSize(result.frame_size);
+      setDetections(result.detections);
+      setInferenceMs(result.inference_ms);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Image detection failed.');
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
+  const displayFrame = uploadedFrame ?? frame;
+  const videoStreamActive =
+    connectionStatus === 'CONNECTED' && cameraStatus === 'ACTIVE' && frame !== null;
+  const videoStreamStatus =
+    connectionStatus !== 'CONNECTED'
+      ? connectionStatus
+      : cameraStatus === 'NO CAMERA'
+        ? 'NO CAMERA'
+        : videoStreamActive
+          ? 'STREAMING'
+          : 'WAITING';
 
   return (
     <div className="h-full w-full flex bg-gis-bg overflow-hidden text-[13px]">
@@ -33,56 +169,76 @@ export default function TraineeUI() {
           <span>+</span>
         </div>
         <div className="py-2">
-          <LayerItem label="RGB CAMERA" active color="#00ff00" />
-          <LayerItem label="THERMAL / LWIR" active color="#ff5555" />
-          <LayerItem label="RADAR (FMCW)" color="#55aaff" />
-          <LayerItem label="TRACK FUSION" active color="#ffffff" selected />
+          <LayerItem label="RGB CAMERA SOURCE" active={cameraStatus === 'ACTIVE'} color="#00ff00" />
+          <LayerItem label="RGB VISION DETECTOR" active={modality === 'rgb' && activeModelStatus === 'LOADED'} color="#55aaff" selected={modality === 'rgb'} />
+          <LayerItem label="INFRARED DETECTOR" active={modality === 'ir' && activeModelStatus === 'LOADED'} color="#ff9955" selected={modality === 'ir'} />
+          <LayerItem label="RADAR (UNAVAILABLE)" color="#55aaff" />
+          <LayerItem label="TRACK FUSION" active={detections.length > 0} color="#ffffff" selected />
         </div>
         
         <div className="px-4 py-3 border-y border-gis-border text-gis-muted uppercase tracking-wider text-[11px] font-semibold mt-4">
           Sensor Diagnostics
         </div>
         <div className="p-4 space-y-4">
-           <DiagnosticRow label="RT-DETR Model" value="LOADED" status="good" />
-           <DiagnosticRow label="Frame Latency" value="45ms" status="good" />
-           <DiagnosticRow label="Thermal Stream" value="OFFLINE" status="bad" />
+           <DiagnosticRow label="WebSocket" value={connectionStatus} status={connectionStatus === 'CONNECTED' ? 'good' : 'bad'} />
+           <DiagnosticRow label="Selected camera" value={cameraStatus} status={cameraStatus === 'ACTIVE' ? 'good' : 'bad'} />
+           <DiagnosticRow label="RGB vision detector" value={rgbModelStatus} status={rgbModelStatus === 'LOADED' ? 'good' : 'bad'} />
+           <DiagnosticRow label="Infrared detector" value={irModelStatus} status={irModelStatus === 'LOADED' ? 'good' : 'bad'} />
+           <DiagnosticRow
+             label={`Live ${modality.toUpperCase()} detection`}
+             value={activeModelStatus === 'LOADED' && cameraStatus === 'ACTIVE' ? 'ACTIVE' : activeModelStatus}
+             status={activeModelStatus === 'LOADED' && cameraStatus === 'ACTIVE' ? 'good' : 'bad'}
+           />
+           <DiagnosticRow label="Model inference" value={inferenceMs === null ? '—' : `${inferenceMs.toFixed(1)} ms`} status="good" />
+           <DiagnosticRow label="Video stream" value={videoStreamStatus} status={videoStreamActive ? 'good' : 'bad'} />
         </div>
       </div>
 
       {/* Main Map/Video View */}
       <div className="flex-1 bg-[#1a1a1a] relative flex flex-col">
         {/* Top toolbar inside map area */}
-        <div className="absolute top-4 left-4 z-10 flex gap-2">
+        <div className="absolute top-4 left-4 z-10 flex flex-wrap gap-2">
            <div className="bg-gis-panel/90 backdrop-blur border border-gis-border px-3 py-1.5 rounded-2xl text-gis-accent text-[12px]">
-             3D / 2D SIMULATION
+             LIVE CAMERA
+           </div>
+           <div className="bg-gis-panel/90 backdrop-blur border border-gis-border px-3 py-1.5 rounded-2xl text-gis-accent text-[12px]">
+             {`ACTIVE MODE: ${modality.toUpperCase()} MODEL`}
+             {cameraStatus === 'ACTIVE' && ` · RGB CAMERA SOURCE`}
            </div>
         </div>
         
         {/* Live Video Background */}
         <div className="absolute inset-0 flex items-center justify-center">
-          {frame ? (
-             <img src={frame} alt="Live" className="w-full h-full object-contain" />
+          {displayFrame ? (
+             <img src={displayFrame} alt={uploadedFrame ? 'Uploaded detection input' : 'Live RGB camera'} className="w-full h-full object-contain" />
           ) : (
-             <div className="text-gis-muted font-medium text-[14px]">Awaiting Video Stream...</div>
+             <div className="text-center text-gis-muted">
+               <div className="font-medium text-[14px]">{cameraStatus === 'NO CAMERA' ? 'Camera unavailable' : 'Connecting to camera…'}</div>
+               <div className="mt-2 text-[12px]">Upload an image to run RGB or IR detection.</div>
+             </div>
           )}
         </div>
         
         {/* Real Detections Overlay */}
-        {detections.map((det, i) => {
-          const [x, y, w, h] = det.bbox;
-          const [fw, fh] = frameSize;
-          return (
-            <div key={i} className="absolute z-10" style={{
-              left: `${(x / fw) * 100}%`, top: `${(y / fh) * 100}%`, width: `${(w / fw) * 100}%`, height: `${(h / fh) * 100}%`
-            }}>
-              <div className="w-full h-full border-[1.5px] border-[#00ff00] relative">
-                <div className="absolute -top-5 left-[-1.5px] bg-[#00ff00] text-black font-medium text-[11px] px-1 py-0.5 whitespace-nowrap">
-                  {det.id} {det.class} {(det.confidence * 100).toFixed(0)}%
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {displayFrame && detections.length > 0 && (
+          <svg
+            viewBox={`0 0 ${frameSize[0]} ${frameSize[1]}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+          >
+            {detections.map(det => {
+              const [x, y, width, height] = det.bbox;
+              return (
+                <g key={det.id}>
+                  <rect x={x} y={y} width={width} height={height} fill="none" stroke="#00ff66" strokeWidth={Math.max(2, frameSize[0] * 0.003)} />
+                  <text x={x} y={Math.max(16, y - 5)} fill="#00ff66" fontSize={Math.max(12, frameSize[0] * 0.018)} fontWeight="bold">
+                    {det.class} {(det.confidence * 100).toFixed(0)}%
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
         
         {/* Scale indicator bottom right */}
         <div className="absolute bottom-4 right-4 text-gis-accent text-[11px] font-mono bg-gis-bg/80 px-2 py-1 rounded-2xl">
@@ -93,17 +249,70 @@ export default function TraineeUI() {
       {/* Right Sidebar - Track Intel & Actions */}
       <div className="w-[320px] bg-gis-panel border-l border-gis-border flex flex-col shrink-0">
         <div className="px-4 py-3 border-b border-gis-border text-gis-accent flex justify-between items-center">
-          <span className="font-medium text-[14px]">Track Inspector</span>
+          <span className="font-medium text-[14px]">{uploadedFrame ? 'Image Results' : 'Track Inspector'}</span>
           <span className="text-gis-muted cursor-pointer">✕</span>
         </div>
         
         <div className="p-4 flex-1 overflow-y-auto">
+          <form onSubmit={detectImage} className="mb-5 space-y-3 border-b border-gis-border pb-5">
+            <label className="block text-[11px] uppercase tracking-wide text-gis-muted" htmlFor="detection-modality">
+              Active live mode and image model
+            </label>
+            <select
+              id="detection-modality"
+              value={modality}
+              onChange={event => selectModality(event.target.value as Modality)}
+              className="w-full rounded-xl border border-gis-border bg-[#1a1a1a] p-2 text-gis-text"
+            >
+               <option value="rgb">RGB Vision Detection</option>
+               <option value="ir">Infrared Detection</option>
+               <option value="radar" disabled>Radar (model unavailable)</option>
+            </select>
+            <p className="text-[11px] leading-relaxed text-gis-muted">
+               Select one detector at a time for RGB vision or infrared detection.
+               The current webcam is the video source for either selected model.
+            </p>
+            {modeWarning && (
+              <p role="alert" className="rounded-lg border border-[#a64b4b] bg-[#3a2020] p-2 text-[11px] leading-relaxed text-[#ffaaaa]">
+                {modeWarning}
+              </p>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={event => setSelectedFile(event.target.files?.[0] ?? null)}
+              className="w-full text-[11px] text-gis-muted file:mr-2 file:rounded-lg file:border-0 file:bg-gis-active file:px-3 file:py-2 file:text-white"
+            />
+            {uploadError && <p role="alert" className="text-[11px] text-[#ff8888]">{uploadError}</p>}
+            <button
+              type="submit"
+              disabled={!selectedFile || isDetecting}
+              className="w-full rounded-xl bg-gis-active py-2 text-white hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isDetecting ? 'Running detection…' : `Detect with ${modality.toUpperCase()} model`}
+            </button>
+            {uploadedFrame && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (uploadedFrameUrl.current) URL.revokeObjectURL(uploadedFrameUrl.current);
+                  uploadedFrameUrl.current = null;
+                  setUploadedFrame(null);
+                  setDetections([]);
+                }}
+                className="w-full rounded-xl border border-gis-border py-2 text-gis-muted hover:bg-gis-panel-light"
+              >
+                Return to live camera
+              </button>
+            )}
+          </form>
           {detections.length > 0 ? (
             <div className="space-y-4">
               <div className="mb-6">
                 <div className="text-gis-muted text-[11px] uppercase mb-1">Active Track</div>
                 <div className="text-[20px] font-medium text-gis-accent">{detections[0].id}</div>
               </div>
+              <PropRow label="Sensor" value={detections[0].sensors.join(', ')} />
               <PropRow label="Class" value={detections[0].class.toUpperCase()} />
               <PropRow label="Confidence" value={`${(detections[0].confidence * 100).toFixed(1)}%`} highlight />
               <PropRow label="Size Band" value={detections[0].size_band} />

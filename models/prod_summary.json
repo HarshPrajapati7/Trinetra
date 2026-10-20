@@ -1,0 +1,37 @@
+{
+  "rgb_best_weights": "/kaggle/working/runs/full/yolo11s_rgb_uav_t4x2_full/weights/best.pt",
+  "ir_best_weights": "/kaggle/working/runs/full/yolo11s_ir_uav_t4x2_full/weights/best.pt",
+  "rgb_device": 0,
+  "ir_device": 1,
+  "frame_rate": 25,
+  "tracker": "bytetrack.yaml",
+  "fuse_iou_rel": 0.3,
+  "n_demo_frames": 60,
+  "total_detections": 38,
+  "source_breakdown": {
+    "ir": 22,
+    "rgb": 16
+  },
+  "camera_gps_origin": {
+    "lat": 39.9042,
+    "lon": 116.4074,
+    "alt_m": 100.0
+  },
+  "outputs": {
+    "video": "/kaggle/working/prod_inference/prod_tracking_demo.mp4",
+    "gps_log_csv": "/kaggle/working/prod_inference/prod_gps_track_log.csv",
+    "trajectory_png": "/kaggle/working/prod_inference/prod_track_trajectory.png"
+  },
+  "rgb_metrics_from_cell7": {
+    "mAP50": 0.993,
+    "mAP50-95": 0.677,
+    "P": 0.981,
+    "R": 0.983
+  },
+  "ir_metrics_from_cell7": {
+    "mAP50": 0.994,
+    "mAP50-95": 0.616,
+    "P": 0.993,
+    "R": 0.988
+  }
+}

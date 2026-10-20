@@ -1,4 +1,6 @@
-export default function HomeUI({ setView }: { setView: (v: string) => void }) {
+type ViewState = 'home' | 'trainee' | 'instructor' | 'aar' | 'monitoring';
+
+export default function HomeUI({ setView }: { setView: (v: ViewState) => void }) {
   return (
     <div className="h-full w-full overflow-y-auto bg-gis-bg flex flex-col justify-between">
       <div>
@@ -44,7 +46,7 @@ export default function HomeUI({ setView }: { setView: (v: string) => void }) {
               Real-time inference. No simulated AI.
             </h2>
             <p className="text-[18px] max-w-2xl text-gis-text leading-relaxed">
-              The platform executes actual NVIDIA TAO RT-DETR models backed by C-RADIOv3-L, integrating RGB, Thermal, and Radar streams directly into the training scenario.
+              The platform runs trained YOLO11 models on RGB and infrared inputs, with recorded GPS detections and evaluation metrics from the model run.
             </p>
             <div className="mt-4 flex">
                <button 
@@ -62,15 +64,15 @@ export default function HomeUI({ setView }: { setView: (v: string) => void }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <InfoCard 
               title="Real-time Perception" 
-              desc="Live RT-DETR object detection with frozen foundation backbone. Zero mockup detections." 
+              desc="Live webcam detection with the trained RGB YOLO11 model."
             />
             <InfoCard 
               title="Multimodal Fusion" 
-              desc="Integration framework for RGB, Thermal, and Radar streams into a single reliable track." 
+              desc="Select RGB or infrared YOLO11 inference for uploaded images; both models report independent predictions."
             />
             <InfoCard 
               title="Training Analytics" 
-              desc="Causal after-action review and trainee competency modeling via counterfactual replay." 
+              desc="Review recorded model metrics, GPS-tagged detections, evaluation plots, and the production video."
             />
           </div>
         </div>

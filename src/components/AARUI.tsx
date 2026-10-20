@@ -1,82 +1,336 @@
+import { useEffect, useState } from 'react';
+
+const API_URL = 'http://localhost:8080';
+const RGB_COLOR = '#55aaff';
+const IR_COLOR = '#ff9955';
+
+type ModelMetrics = {
+  mAP50: number;
+  'mAP50-95': number;
+  P: number;
+  R: number;
+};
+
+type DetectionTrack = {
+  frame: number;
+  track_id: string;
+  source: 'rgb' | 'ir';
+  confidence: number;
+  latitude: number;
+  longitude: number;
+  altitude_m: number;
+  center_x: number;
+  center_y: number;
+};
+
+type Analytics = {
+  evaluation: {
+    frame_rate: number;
+    tracker: string;
+    demo_frames: number;
+    total_detections: number;
+    source_breakdown: Record<string, number>;
+    rgb_metrics: ModelMetrics;
+    ir_metrics: ModelMetrics;
+  };
+  tracks: DetectionTrack[];
+};
+
+const evaluationPlots = [
+  { title: 'Confusion matrix', filename: 'Confusion Matrix.jpeg' },
+  { title: 'Precision–recall curve', filename: 'Precision-Recall Curve.jpeg' },
+  { title: 'F1 confidence curve', filename: 'F1 Confidence Curve.jpeg' },
+  { title: 'Training loss', filename: 'Loss Details.jpeg' },
+  { title: 'Recorded GPS trajectory', filename: 'TracK GPS Trejectory.jpeg' },
+];
+
+function assetUrl(filename: string) {
+  return `${API_URL}/api/assets/${encodeURIComponent(filename)}`;
+}
+
 export default function AARUI() {
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_URL}/api/analytics`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) {
+          throw new Error(`Analytics request failed (${response.status})`);
+        }
+        return response.json() as Promise<Analytics>;
+      })
+      .then(setAnalytics)
+      .catch((requestError: unknown) => {
+        if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) {
+          setError(requestError instanceof Error ? requestError.message : 'Could not load recorded evaluation data.');
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  const exportReport = () => {
+    if (!analytics) return;
+    const report = new Blob([JSON.stringify(analytics, null, 2)], {
+      type: 'application/json',
+    });
+    const downloadUrl = URL.createObjectURL(report);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = 'trinetra-model-evaluation.json';
+    link.click();
+    URL.revokeObjectURL(downloadUrl);
+  };
+
   return (
-    <div className="h-full w-full p-8 bg-gis-bg overflow-y-auto text-[13px]">
-      <div className="max-w-[1000px] mx-auto space-y-6">
-        <header className="mb-8 border-b border-gis-border pb-6">
-          <h1 className="text-[24px] font-medium text-gis-accent flex justify-between items-center">
-            <span>Analytics & After-Action Review</span>
-            <button className="px-4 py-1.5 text-[12px] bg-gis-panel border border-gis-border rounded-2xl text-gis-text hover:bg-gis-panel-light">Export Report</button>
-          </h1>
-          <p className="text-gis-muted mt-1">Session: TRN-9284 • Scenario: Haze / Multi-UAV</p>
+    <div className="h-full w-full overflow-y-auto bg-gis-bg p-6 text-[13px] md:p-8">
+      <div className="mx-auto max-w-[1280px] space-y-6">
+        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-gis-border pb-5">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-gis-muted">Recorded model run</p>
+            <h1 className="mt-2 text-[24px] font-medium text-gis-accent">
+              Analytics &amp; After-Action Review
+            </h1>
+            <p className="mt-1 text-gis-muted">
+              RGB and infrared YOLO11 evaluation, recorded detections, and production replay.
+            </p>
+          </div>
+          <button
+            disabled={!analytics}
+            onClick={exportReport}
+            className="rounded-full border border-gis-border bg-gis-panel px-4 py-2 text-gis-text transition-colors hover:bg-gis-panel-light disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Export evaluation JSON
+          </button>
         </header>
 
-        <div className="grid grid-cols-12 gap-8">
-          
-          <div className="col-span-5 bg-gis-panel border border-gis-border rounded-2xl p-6">
-            <h2 className="text-[16px] font-medium text-gis-accent mb-6">Event Timeline</h2>
-            <div className="space-y-6 border-l border-[#444] ml-2 pl-4 py-2 relative">
-              <Event time="T+12.4s" title="Visual contact (RGB)" type="info" />
-              <Event time="T+14.7s" title="RGB confidence drops below 60%" type="warn" />
-              <Event time="T+16.2s" title="Thermal track fused" type="info" />
-              <Event time="T+21.3s" title="Trainee marked track as hostile" type="user" highlight />
-            </div>
+        {error && (
+          <div role="alert" className="rounded-2xl border border-[#a64b4b] bg-[#3a2020] p-4 text-[#ffaaaa]">
+            {error}. Check that the backend is running and the `models` assets are present.
           </div>
+        )}
 
-          <div className="col-span-7 space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <MetricBox label="Detection Accuracy" value="94.2%" trend="+2.1%" />
-              <MetricBox label="Time to Engage" value="8.9s" trend="-1.2s" />
-              <MetricBox label="Sensor Utilization" value="3/3" trend="Optimal" />
-              <MetricBox label="False Positives" value="0" trend="-" />
-            </div>
+        {!analytics && !error && (
+          <div className="rounded-2xl border border-gis-border bg-gis-panel p-6 text-gis-muted">
+            Loading recorded evaluation data…
+          </div>
+        )}
 
-            <div className="bg-gis-panel border border-gis-border rounded-2xl p-6">
-              <h2 className="text-[16px] font-medium text-gis-accent mb-4">Counterfactual Branch Analysis</h2>
-              
-              <div className="bg-[#1a1a1a] border border-[#333] p-4 rounded-2xl mb-4">
-                <div className="text-gis-muted text-[11px] uppercase mb-1">Trainee Action @ T+21.3s</div>
-                <div className="text-gis-accent font-medium mb-2">Engaged track without Radar confirmation</div>
-                <div className="text-[#ffaa00]">Result: Minor penalty. Rule of engagement requires multi-sensor verification in Haze conditions.</div>
+        {analytics && (
+          <>
+            <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <MetricCard label="Logged detections" value={analytics.evaluation.total_detections} />
+              <MetricCard label="Demo frames" value={analytics.evaluation.demo_frames} />
+              <MetricCard label="Recorded frame rate" value={`${analytics.evaluation.frame_rate} FPS`} />
+              <MetricCard label="Tracker" value={analytics.evaluation.tracker} />
+            </section>
+
+            <section className="grid gap-4 lg:grid-cols-2">
+              <ModelScoreCard
+                title="RGB model"
+                color={RGB_COLOR}
+                metrics={analytics.evaluation.rgb_metrics}
+                count={analytics.evaluation.source_breakdown.rgb ?? 0}
+              />
+              <ModelScoreCard
+                title="Infrared detection"
+                color={IR_COLOR}
+                metrics={analytics.evaluation.ir_metrics}
+                count={analytics.evaluation.source_breakdown.ir ?? 0}
+              />
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-2xl border border-gis-border bg-gis-panel p-5">
+                <SectionHeading
+                  title="Recorded GPS detections"
+                  detail={`${analytics.tracks.length} detections · source-colored · longitude / latitude`}
+                />
+                <TrackPlot tracks={analytics.tracks} />
+                <div className="mt-3 flex flex-wrap gap-5 text-[11px] text-gis-muted">
+                  <Legend color={RGB_COLOR} label={`RGB (${analytics.evaluation.source_breakdown.rgb ?? 0})`} />
+                  <Legend color={IR_COLOR} label={`IR (${analytics.evaluation.source_breakdown.ir ?? 0})`} />
+                  <span>Hover a point for track, frame, and confidence.</span>
+                </div>
               </div>
 
-              <div className="bg-[#1a1a1a] border border-gis-active/50 p-4 rounded-2xl shadow-[0_0_15px_rgba(59,90,130,0.1)]">
-                <div className="text-gis-active text-[11px] uppercase mb-1">Optimal AI Branch</div>
-                <div className="text-gis-accent font-medium mb-2">Wait 2.4s for Radar scan sweep completion</div>
-                <div className="text-[#00ff66]">Result: 100% confidence achieved. Zero penalty.</div>
-                <button className="mt-4 px-4 py-2 bg-gis-active/20 text-gis-accent border border-gis-active rounded-full text-[12px] hover:bg-gis-active hover:text-white transition-colors w-full">
-                  Play Simulation Branch
-                </button>
+              <div className="rounded-2xl border border-gis-border bg-gis-panel p-5">
+                <SectionHeading
+                  title="Production replay"
+                  detail={`${analytics.evaluation.demo_frames} recorded frames`}
+                />
+                <video
+                  controls
+                  preload="metadata"
+                  className="mt-4 aspect-video w-full rounded-xl border border-gis-border bg-black"
+                  src={assetUrl('Drone Detection Video.mp4')}
+                >
+                  Your browser does not support the video element.
+                </video>
+                <a
+                  className="mt-3 inline-block text-gis-accent underline decoration-gis-border underline-offset-4"
+                  href={assetUrl('prod_gps_track_log.csv')}
+                  download
+                >
+                  Download recorded GPS track log
+                </a>
               </div>
-            </div>
-          </div>
+            </section>
 
-        </div>
+            <section className="rounded-2xl border border-gis-border bg-gis-panel p-5">
+              <SectionHeading
+                title="Model evaluation artifacts"
+                detail="Evaluation plots exported with the model run"
+              />
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {evaluationPlots.map(plot => (
+                  <figure key={plot.filename} className="min-w-0">
+                    <img
+                      src={assetUrl(plot.filename)}
+                      alt={plot.title}
+                      loading="lazy"
+                      className="aspect-[4/3] w-full rounded-xl border border-gis-border bg-[#111] object-contain"
+                    />
+                    <figcaption className="mt-2 text-[12px] text-gis-muted">{plot.title}</figcaption>
+                  </figure>
+                ))}
+              </div>
+              <a
+                className="mt-5 inline-block text-gis-accent underline decoration-gis-border underline-offset-4"
+                href={assetUrl('anti-drone.ipynb')}
+                download
+              >
+                Download model analysis notebook
+              </a>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function Event({ time, title, type, highlight }: { time: string, title: string, type: string, highlight?: boolean }) {
-  const c = type === 'warn' ? 'bg-[#ffaa00]' : type === 'user' ? 'bg-[#ffffff]' : 'bg-gis-active';
+function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className={`relative ${highlight ? 'bg-[#1a1a1a] p-3 rounded-2xl border border-[#333] -ml-7 pl-7' : ''}`}>
-      <div className={`absolute -left-[21px] top-1.5 w-2 h-2 rounded-full ${c}`}></div>
-      <div className="flex flex-col">
-        <span className="text-gis-muted text-[11px] font-mono">{time}</span>
-        <span className={highlight ? 'text-gis-accent font-medium' : 'text-gis-text'}>{title}</span>
+    <div className="min-w-0 rounded-2xl border border-gis-border bg-gis-panel p-4">
+      <p className="text-[11px] text-gis-muted">{label}</p>
+      <p className="mt-2 truncate text-[22px] font-medium text-gis-accent">{value}</p>
+    </div>
+  );
+}
+
+function ModelScoreCard({
+  title,
+  color,
+  metrics,
+  count,
+}: {
+  title: string;
+  color: string;
+  metrics: ModelMetrics;
+  count: number;
+}) {
+  const scores = [
+    ['mAP50', metrics.mAP50],
+    ['mAP50–95', metrics['mAP50-95']],
+    ['Precision', metrics.P],
+    ['Recall', metrics.R],
+  ] as const;
+
+  return (
+    <div className="rounded-2xl border border-gis-border bg-gis-panel p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-[15px] font-medium text-gis-text">{title}</h2>
+        <span className="text-[11px] text-gis-muted">{count} logged detections</span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-4">
+        {scores.map(([label, score]) => (
+          <div key={label}>
+            <div className="flex justify-between text-[11px] text-gis-muted">
+              <span>{label}</span>
+              <span>{(score * 100).toFixed(1)}%</span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#24272b]">
+              <div className="h-full rounded-full" style={{ width: `${score * 100}%`, backgroundColor: color }} />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function MetricBox({ label, value, trend }: { label: string, value: string, trend: string }) {
+function SectionHeading({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="bg-gis-panel border border-gis-border p-4 rounded-2xl flex flex-col gap-1">
-      <span className="text-gis-muted text-[12px]">{label}</span>
-      <div className="flex items-end gap-3 mt-1">
-        <span className="text-[24px] text-gis-accent font-medium leading-none">{value}</span>
-        <span className="text-gis-active text-[12px] mb-0.5">{trend}</span>
-      </div>
+    <div>
+      <h2 className="text-[15px] font-medium text-gis-accent">{title}</h2>
+      <p className="mt-1 text-[11px] text-gis-muted">{detail}</p>
     </div>
+  );
+}
+
+function TrackPlot({ tracks }: { tracks: DetectionTrack[] }) {
+  const width = 800;
+  const height = 250;
+  const inset = 34;
+  const longitudes = tracks.map(track => track.longitude);
+  const latitudes = tracks.map(track => track.latitude);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const longitudeRange = maxLongitude - minLongitude || 1;
+  const latitudeRange = maxLatitude - minLatitude || 1;
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <svg
+        role="img"
+        aria-label="Recorded GPS detections by longitude and latitude"
+        viewBox={`0 0 ${width} ${height}`}
+        className="min-w-[560px] w-full"
+      >
+        <line x1={inset} y1={height - inset} x2={width - inset} y2={height - inset} stroke="#454a50" />
+        <line x1={inset} y1={inset} x2={inset} y2={height - inset} stroke="#454a50" />
+        <text x={inset} y={height - 10} fill="#969da5" fontSize="10">
+          {minLongitude.toFixed(5)}
+        </text>
+        <text x={width - inset} y={height - 10} fill="#969da5" fontSize="10" textAnchor="end">
+          {maxLongitude.toFixed(5)}
+        </text>
+        <text x={inset + 4} y={inset + 10} fill="#969da5" fontSize="10">
+          {maxLatitude.toFixed(5)}
+        </text>
+        <text x={inset + 4} y={height - inset - 4} fill="#969da5" fontSize="10">
+          {minLatitude.toFixed(5)}
+        </text>
+        {tracks.map((track, index) => {
+          const x = maxLongitude === minLongitude
+            ? width / 2
+            : inset + ((track.longitude - minLongitude) / longitudeRange) * (width - inset * 2);
+          const y = maxLatitude === minLatitude
+            ? height / 2
+            : height - inset - ((track.latitude - minLatitude) / latitudeRange) * (height - inset * 2);
+          const color = track.source === 'ir' ? IR_COLOR : RGB_COLOR;
+          return (
+            <circle key={`${track.frame}-${track.track_id}-${track.source}-${index}`} cx={x} cy={y} r="4" fill={color} fillOpacity="0.8">
+              <title>
+                {track.source.toUpperCase()} · track {track.track_id} · frame {track.frame} · {(track.confidence * 100).toFixed(1)}%
+              </title>
+            </circle>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
   );
 }
